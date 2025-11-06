@@ -1,101 +1,122 @@
-# Low-Level Design (LLD)
+# 📦 BookMyShow Clone — Low-Level Design (LLD)
 
-## Entities & Database Schema
+## 1. Entities & Database Schema
+| Entity | Fields |
+|--------|---------|
+| User | user_id (PK), name, email (unique), password_hash, created_at |
+| Movie | movie_id (PK), title, language, genre, duration |
+| Theater | theater_id (PK), name, city |
+| Show | show_id (PK), movie_id (FK), theater_id (FK), show_time, screen_no |
+| Seat | seat_id (PK), show_id (FK), seat_number, status (AVAILABLE, BOOKED) |
+| Booking | booking_id (PK), user_id (FK), show_id (FK), seat_id (FK), status (CONFIRMED, CANCELLED), booking_time |
 
-### User
-- user_id (PK)
-- name
-- email (unique)
-- password_hash
-- created_at
+PK: Primary Key, FK: Foreign Key  
+JPA annotations enforce PKs, FKs, and unique constraints in code.
 
-### Movie
-- movie_id (PK)
-- title
-- language
-- genre
-- duration
+---
 
-### Theater
-- theater_id (PK)
-- name
-- city
+## 2. API Contracts
+| Method | Endpoint | Description |
+|--------|-----------|-------------|
+| POST | /users/register | Create account |
+| POST | /users/login | Authenticate user |
+| GET | /movies?city=xyz | List movies by city |
+| GET | /shows?movieId=123&theaterId=456 | List showtimes |
+| GET | /shows/{id}/seats | View available seats |
+| POST | /bookings | Book selected seats |
 
-### Show
-- show_id (PK)
-- movie_id (FK)
-- theater_id (FK)
-- show_time
-- screen_no
+---
 
-### Seat
-- seat_id (PK)
-- show_id (FK)
-- seat_number
-- status (AVAILABLE, BOOKED)
-
-### Booking
-- booking_id (PK)
-- user_id (FK)
-- show_id (FK)
-- seat_id (FK)
-- status (CONFIRMED, CANCELLED)
-- booking_time
-
-## API Contracts
-
-- POST /users/register → create account
-- POST /users/login → authenticate
-- GET /movies?city=xyz → list movies
-- GET /shows?movieId=123&theaterId=456 → list showtimes
-- GET /shows/{id}/seats → view available seats
-- POST /bookings → book selected seats
-
-## Sequence Diagram (Seat Booking)
-```
-User → App → Booking Service → Seat availability check → Update DB → Return confirmation
+## 3. Sequence Diagram — Seat Booking
+```mermaid
+sequenceDiagram
+    participant User
+    participant App
+    participant BookingService
+    participant DB
+    User->>App: Book seat request
+    App->>BookingService: bookSeat(userId, showId, seatId)
+    BookingService->>DB: Check seat availability
+    BookingService->>DB: Update seat status, create booking (transactional)
+    DB-->>BookingService: Confirmation
+    BookingService-->>App: Booking confirmation
+    App-->>User: Show confirmation
 ```
 
-## Concurrency Handling
-- Prevent double booking using row-level locks or unique constraints on (show_id, seat_number, status=BOOKED).
-- Use JPA @Transactional and database constraints to ensure atomicity.
-# High-Level Design (HLD)
+---
 
-## Functional Requirements
-- User registration/login
-- Browse movies by city, theater, date
-- View showtimes for a movie in a selected theater
-- Select seats from available ones
-- Book tickets and get confirmation
+## 4. Concurrency Handling
+Prevent double booking:  
+Use JPA `@Transactional` in BookingService to ensure atomicity.  
+Check seat status before booking; update status in the same transaction.  
+(Optional) Add a unique constraint on `(show_id, seat_number, status=BOOKED)` at the DB level.  
+Why: Ensures two users cannot book the same seat at the same time.
 
-## Non-Functional Requirements
-- Handle at least 1000 concurrent users
-- Availability: 99.9%
-- Latency for browsing/search: < 500ms
-- Data durability: booking data must not be lost
+---
 
-## Architecture Diagram
+## 5. Implementation Details
+Spring Boot project with Gradle build.  
+JPA Repositories for all entities (User, Movie, Theater, Show, Seat, Booking).  
+Controllers expose REST APIs as per contracts.  
+Service Layer contains business logic and transaction management.  
+Password Security: BCrypt hashing for user passwords.  
+Sample Data: Provided via `import.sql`.  
+Payment: Mocked, always returns success.
+
+---
+
+## 6. Example Entity (User)
+```java
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long userId;
+    private String name;
+    @Column(unique = true)
+    private String email;
+    private String passwordHash;
+    private LocalDateTime createdAt;
+    // getters and setters
+}
 ```
-Browsers
-   |
-Load Balancer
-   |
-Web/App Servers
-   |
-+-------------------------------+
-| Authentication Service        |
-| Movie Catalog Service         |
-| Booking Service               |
-| Payment Service (mocked)      |
-+-------------------------------+
-   |
-Database / Cache (PostgreSQL, Redis)
+
+---
+
+## 7. Example API Request/Response
+**Register User**
+
+**Request:**
+```http
+POST /users/register
+{
+  "name": "Shriraj",
+  "email": "shriraj@example.com",
+  "password": "password123"
+}
 ```
 
-## Data Flow
-### 1. User Searching for Movies
-User → Browser → App Server → Movie Catalog Service → DB → Return Movies
+**Response:**
+```json
+{
+  "userId": 1,
+  "name": "Shriraj",
+  "email": "shriraj@example.com",
+  "createdAt": "2025-11-06T12:00:00"
+}
+```
 
-### 2. User Booking a Ticket
-User → Browser → App Server → Booking Service → Seat Availability Check → Update DB → Return Confirmation
+---
 
+## 8. Error Handling
+Returns appropriate HTTP status codes (e.g., 400 for bad request, 401 for unauthorized, 409 for conflict).  
+Error messages are descriptive for client troubleshooting.
+
+---
+
+
+## 9. References
+Spring Boot Documentation  
+Spring Data JPA  
+BCrypt
